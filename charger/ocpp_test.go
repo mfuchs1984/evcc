@@ -36,12 +36,12 @@ type ocppTestSuite struct {
 	clock *clock.Mock
 }
 
-func (suite *ocppTestSuite) SetupSuite() {
+func (suite *ocppTestSuite) SetupTest() {
 	ocpp.Timeout = 5 * time.Second
+	ocppj.SetLogger(new(ocppLogger))
 
 	// setup cs so we can overwrite logger afterwards
 	_ = ocpp.Instance()
-	ocppj.SetLogger(&ocppLogger{suite.T()})
 
 	suite.clock = clock.NewMock()
 	suite.NotNil(ocpp.Instance())

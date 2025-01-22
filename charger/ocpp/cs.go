@@ -10,6 +10,17 @@ import (
 	ocpp16 "github.com/lorenzodonini/ocpp-go/ocpp1.6"
 )
 
+type registration struct {
+	mu     sync.RWMutex
+	setup  sync.RWMutex                            // serialises chargepoint setup
+	cp     *CP                                     // guarded by setup and CS mutexes
+	status map[int]*core.StatusNotificationRequest // guarded by mu mutex
+}
+
+func newRegistration() *registration {
+	return &registration{status: make(map[int]*core.StatusNotificationRequest)}
+}
+
 type CS struct {
 	mu  sync.Mutex
 	log *util.Logger
@@ -68,8 +79,34 @@ func (cs *CS) ChargepointByID(id string) (*CP, error) {
 	return cp, nil
 }
 
+func (cs *CS) WithConnectorStatus(id string, connector int, fun func(status *core.StatusNotificationRequest)) {
+	cs.mu.Lock()
+	defer cs.mu.Unlock()
+
+	if reg, ok := cs.regs[id]; ok {
+		reg.mu.RLock()
+		if status, ok := reg.status[connector]; ok {
+			fun(status)
+		}
+		reg.mu.RUnlock()
+	}
+}
+
+// RegisterChargepoint registers a charge point with the central system of returns an already registered charge point
 func (cs *CS) RegisterChargepoint(id string, newfun func() *CP, init func(*CP) error) (*CP, error) {
 	cs.mu.Lock()
+  
+  // prepare shadow state
+	reg, registered := cs.regs[id]
+	if !registered {
+		reg = newRegistration()
+		cs.regs[id] = reg
+	}
+  
+  // serialise on chargepoint id
+	reg.setup.Lock()
+	defer reg.setup.Unlock()
+  
 	cpmu, ok := cs.init[id]
 	if !ok {
 		cpmu = new(sync.Mutex)
@@ -133,7 +170,7 @@ func (cs *CS) NewChargePoint(chargePoint ocpp16.ChargePointConnection) {
 
 	// register unknown charge point
 	// when charge point setup is complete, it will eventually be associated with the connected id
-	cs.cps[chargePoint.ID()] = nil
+	cs.regs[chargePoint.ID()] = newRegistration()
 }
 
 // ChargePointDisconnected implements ocpp16.ChargePointConnectionHandler

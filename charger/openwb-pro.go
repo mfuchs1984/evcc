@@ -1,7 +1,6 @@
 package charger
 
 import (
-	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -14,7 +13,7 @@ import (
 )
 
 func init() {
-	registry.AddCtx("openwbpro", NewOpenWBProFromConfig)
+	registry.Add("openwbpro", NewOpenWBProFromConfig)
 }
 
 // https://openwb.de/main/?page_id=771
@@ -28,7 +27,7 @@ type OpenWBPro struct {
 }
 
 // NewOpenWBProFromConfig creates a OpenWBPro charger from generic config
-func NewOpenWBProFromConfig(ctx context.Context, other map[string]interface{}) (api.Charger, error) {
+func NewOpenWBProFromConfig(other map[string]interface{}) (api.Charger, error) {
 	cc := struct {
 		URI   string
 		Cache time.Duration
@@ -40,11 +39,11 @@ func NewOpenWBProFromConfig(ctx context.Context, other map[string]interface{}) (
 		return nil, err
 	}
 
-	return NewOpenWBPro(ctx, util.DefaultScheme(cc.URI, "http"), cc.Cache)
+	return NewOpenWBPro(util.DefaultScheme(cc.URI, "http"), cc.Cache)
 }
 
 // NewOpenWBPro creates OpenWBPro charger
-func NewOpenWBPro(ctx context.Context, uri string, cache time.Duration) (*OpenWBPro, error) {
+func NewOpenWBPro(uri string, cache time.Duration) (*OpenWBPro, error) {
 	log := util.NewLogger("owbpro")
 
 	wb := &OpenWBPro{
@@ -60,19 +59,13 @@ func NewOpenWBPro(ctx context.Context, uri string, cache time.Duration) (*OpenWB
 		return res, err
 	}, cache)
 
-	go wb.heartbeat(ctx, log)
+	go wb.heartbeat(log)
 
 	return wb, nil
 }
 
-func (wb *OpenWBPro) heartbeat(ctx context.Context, log *util.Logger) {
-	for tick := time.Tick(30 * time.Second); ; {
-		select {
-		case <-tick:
-		case <-ctx.Done():
-			return
-		}
-
+func (wb *OpenWBPro) heartbeat(log *util.Logger) {
+	for range time.Tick(30 * time.Second) {
 		if _, err := wb.statusG.Get(); err != nil {
 			log.ERROR.Printf("heartbeat: %v", err)
 		}

@@ -387,7 +387,7 @@ func (c *CmdConfigure) processParams(templateItem *templates.Template, deviceCat
 			}
 
 			switch param.Type {
-			case templates.TypeList:
+			case templates.TypeStringList:
 				values := c.processListInputConfig(param)
 				var nonEmptyValues []string
 				for _, value := range values {
@@ -444,7 +444,7 @@ func (c *CmdConfigure) processInputConfig(param templates.Param) string {
 		exampleValue: param.Example,
 		help:         param.Help.ShortString(c.lang),
 		valueType:    param.Type,
-		choice:       param.Choice,
+		validValues:  param.ValidValues,
 		mask:         param.IsMasked(),
 		required:     param.IsRequired(),
 	})

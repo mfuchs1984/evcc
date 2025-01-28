@@ -5,9 +5,8 @@ products:
       generic: Wi-Fi P1 Meter
 params:
   - name: usage
-    choice: ["grid"]
+    choice: ["grid", "pv"]
   - name: host
 render: |
   type: homewizard
   uri: http://{{ .host }}
-  usage: {{ .usage }}

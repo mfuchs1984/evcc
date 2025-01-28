@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -18,11 +20,11 @@ import (
 
 // HTTP implements HTTP request provider
 type HTTP struct {
-	*getter
 	*request.Helper
 	url, method string
 	headers     map[string]string
 	body        string
+	scale       float64
 	cache       time.Duration
 	updated     time.Time
 	pipeline    *pipeline.Pipeline
@@ -33,8 +35,6 @@ type HTTP struct {
 func init() {
 	registry.AddCtx("http", NewHTTPProviderFromConfig)
 }
-
-var mc = httpcache.NewMemoryCache()
 
 // Auth is the authorization config
 type Auth struct {
@@ -65,48 +65,47 @@ func NewHTTPProviderFromConfig(ctx context.Context, other map[string]interface{}
 	}
 
 	log := contextLogger(ctx, util.NewLogger("http"))
-	p := NewHTTP(
+	http := NewHTTP(
 		log,
 		strings.ToUpper(cc.Method),
 		cc.URI,
 		cc.Insecure,
+		cc.Scale,
 		cc.Cache,
 	).
 		WithHeaders(cc.Headers).
 		WithBody(cc.Body)
 
-	p.Client.Timeout = cc.Timeout
-
-	p.getter = defaultGetters(p, cc.Scale)
+	http.Client.Timeout = cc.Timeout
 
 	var err error
 	if cc.Auth.Type != "" {
-		_, err = p.WithAuth(cc.Auth.Type, cc.Auth.User, cc.Auth.Password)
+		_, err = http.WithAuth(cc.Auth.Type, cc.Auth.User, cc.Auth.Password)
 	}
 
 	if err == nil {
 		var pipe *pipeline.Pipeline
 		pipe, err = pipeline.New(log, cc.Settings)
-		p = p.WithPipeline(pipe)
+		http = http.WithPipeline(pipe)
 	}
 
-	return p, err
+	return http, err
 }
 
 // NewHTTP create HTTP provider
-func NewHTTP(log *util.Logger, method, uri string, insecure bool, cache time.Duration) *HTTP {
+func NewHTTP(log *util.Logger, method, uri string, insecure bool, scale float64, cache time.Duration) *HTTP {
 	p := &HTTP{
 		Helper: request.NewHelper(log),
 		url:    uri,
 		method: method,
+		scale:  scale,
 		cache:  cache,
 	}
 
 	// http cache
-	p.Client.Transport = &httpcache.Transport{
-		Cache:     mc,
-		Transport: p.Client.Transport,
-	}
+	cacheTransport := httpcache.NewMemoryCacheTransport()
+	cacheTransport.Transport = p.Client.Transport
+	p.Client.Transport = cacheTransport
 
 	// ignore the self signed certificate
 	if insecure {
@@ -181,7 +180,7 @@ func (p *HTTP) request(url string, body string) ([]byte, error) {
 	return p.val, p.err
 }
 
-var _ Getters = (*HTTP)(nil)
+var _ StringProvider = (*HTTP)(nil)
 
 // StringGetter sends string request
 func (p *HTTP) StringGetter() (func() (string, error), error) {
@@ -199,6 +198,48 @@ func (p *HTTP) StringGetter() (func() (string, error), error) {
 
 		return string(b), err
 	}, nil
+}
+
+var _ FloatProvider = (*HTTP)(nil)
+
+// FloatGetter parses float from request
+func (p *HTTP) FloatGetter() (func() (float64, error), error) {
+	g, err := p.StringGetter()
+
+	return func() (float64, error) {
+		s, err := g()
+		if err != nil {
+			return 0, err
+		}
+
+		f, err := strconv.ParseFloat(s, 64)
+
+		return f * p.scale, err
+	}, err
+}
+
+var _ IntProvider = (*HTTP)(nil)
+
+// IntGetter parses int64 from request
+func (p *HTTP) IntGetter() (func() (int64, error), error) {
+	g, err := p.FloatGetter()
+
+	return func() (int64, error) {
+		f, err := g()
+		return int64(math.Round(f)), err
+	}, err
+}
+
+var _ BoolProvider = (*HTTP)(nil)
+
+// BoolGetter parses bool from request
+func (p *HTTP) BoolGetter() (func() (bool, error), error) {
+	g, err := p.StringGetter()
+
+	return func() (bool, error) {
+		s, err := g()
+		return util.Truish(s), err
+	}, err
 }
 
 func (p *HTTP) set(param string, val interface{}) error {

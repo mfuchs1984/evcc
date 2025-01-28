@@ -103,6 +103,8 @@ func (c *DaheimLaden) Status() (api.ChargeStatus, error) {
 		return api.StatusB, nil
 	case daheimladen.CHARGING, daheimladen.FINISHING:
 		return api.StatusC, nil
+	case daheimladen.FAULTED:
+		return api.StatusF, nil
 	default:
 		return api.StatusNone, fmt.Errorf("invalid status: %s", res.Status)
 	}

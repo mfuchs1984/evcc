@@ -139,10 +139,12 @@ func (s *SEMP) Run() {
 		ads = append(ads, ad)
 	}
 
+	ticker := time.NewTicker(maxAge * time.Second / 2)
+
 ANNOUNCE:
-	for tick := time.Tick(maxAge * time.Second / 2); ; {
+	for {
 		select {
-		case <-tick:
+		case <-ticker.C:
 			for _, ad := range ads {
 				if err := ad.Alive(); err != nil {
 					s.log.ERROR.Println(err)

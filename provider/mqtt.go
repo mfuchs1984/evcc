@@ -11,12 +11,12 @@ import (
 
 // Mqtt provider
 type Mqtt struct {
-	*getter
 	log      *util.Logger
 	client   *mqtt.Client
 	topic    string
 	retained bool
 	payload  string
+	scale    float64
 	timeout  time.Duration
 	pipeline *pipeline.Pipeline
 }
@@ -68,10 +68,9 @@ func NewMqtt(log *util.Logger, client *mqtt.Client, topic string, timeout time.D
 		log:     log,
 		client:  client,
 		topic:   topic,
+		scale:   1,
 		timeout: timeout,
 	}
-
-	m.getter = defaultGetters(m, 1)
 
 	return m
 }
@@ -104,6 +103,7 @@ func (p *Mqtt) WithPipeline(pipeline *pipeline.Pipeline) *Mqtt {
 func (m *Mqtt) newReceiver() (*msgHandler, error) {
 	h := &msgHandler{
 		topic:    m.topic,
+		scale:    m.scale,
 		pipeline: m.pipeline,
 		val:      util.NewMonitor[string](m.timeout),
 	}
@@ -112,12 +112,36 @@ func (m *Mqtt) newReceiver() (*msgHandler, error) {
 	return h, err
 }
 
-var _ Getters = (*Mqtt)(nil)
+var _ FloatProvider = (*Mqtt)(nil)
+
+// FloatGetter creates handler for float64 from MQTT topic that returns cached value
+func (m *Mqtt) FloatGetter() (func() (float64, error), error) {
+	h, err := m.newReceiver()
+	return h.floatGetter, err
+}
+
+var _ IntProvider = (*Mqtt)(nil)
+
+// IntGetter creates handler for int64 from MQTT topic that returns cached value
+func (m *Mqtt) IntGetter() (func() (int64, error), error) {
+	h, err := m.newReceiver()
+	return h.intGetter, err
+}
+
+var _ StringProvider = (*Mqtt)(nil)
 
 // StringGetter creates handler for string from MQTT topic that returns cached value
 func (m *Mqtt) StringGetter() (func() (string, error), error) {
 	h, err := m.newReceiver()
-	return h.value, err
+	return h.stringGetter, err
+}
+
+var _ BoolProvider = (*Mqtt)(nil)
+
+// BoolGetter creates handler for string from MQTT topic that returns cached value
+func (m *Mqtt) BoolGetter() (func() (bool, error), error) {
+	h, err := m.newReceiver()
+	return h.boolGetter, err
 }
 
 var _ SetIntProvider = (*Mqtt)(nil)

@@ -64,14 +64,6 @@ func (v *Provider) Status() (api.ChargeStatus, error) {
 	return status, err
 }
 
-var _ api.VehicleClimater = (*Provider)(nil)
-
-// Climater implements the api.VehicleClimater interface
-func (v *Provider) Climater() (bool, error) {
-	res, err := v.dataG()
-	return res.Preconditioning.Active, err
-}
-
 var _ api.VehiclePosition = (*Provider)(nil)
 
 // Position implements the api.VehiclePosition interface

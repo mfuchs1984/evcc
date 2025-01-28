@@ -1,49 +1,31 @@
-template: huawei-sun2000
-covers: ["huawei-dongle-powersensor", "huawei-sun2000-rs485"]
+template: huawei-dongle-powersensor
 products:
   - brand: Huawei
     description:
-      generic: SUN2000
+      generic: SUN2000 with SDongle & Power Sensor
 capabilities: ["battery-control"]
 requirements:
   description:
     de: |
-      Grid und Batterie erfordern den PowerSensor.
-      "Modbus/TCP" erfordert Freischaltung via "Errichterzugang" in den Kommunikationseinstellungen des Wechselrichters. 
+      Erfordert "Modbus/TCP". Freischaltung via "Errichterzugang" in den Kommunikationseinstellungen des Wechselrichters. 
       Siehe https://forum.huawei.com/enterprise/en/modbus-tcp-guide/thread/667250677153415168-667213868771979264
     en: |
-      Grid and Battery require the PowerSensor.
-      Modbus/TCP requires activation using "maintenance access" within the communication settings of the inverter.
+      Needs "Modbus/TCP". Activation using "maintenance access" within the communication settings of the inverter.
       See https://forum.huawei.com/enterprise/en/modbus-tcp-guide/thread/667250677153415168-667213868771979264
 params:
   - name: usage
     choice: ["grid", "pv", "battery"]
     allinone: true
-  - name: modbus
-    choice: ["rs485", "tcpip"]
-  - name: timeout
-    default: 15s
   - name: storageunit
-    type: int
+    type: number
     default: 1
     advanced: true
-  - name: maxchargepower
-    default: 10000
-    advanced: true
+  - name: modbus
+    choice: ["tcpip"]
+  - name: timeout
+    default: 15s
   - name: capacity
     advanced: true
-  - name: maxacpower
-  - name: forceaccharging
-    default: false
-    advanced: true
-    type: bool
-    usages: ["battery"]
-    description:
-      en: Inverter cascade
-      de: Wechselrichterkaskade
-    help:
-      en: Keep AC charging active to charge the storage from other inverters via AC. Prevents stand-by.
-      de: AC-Laden bleibt aktiv zum Laden des Speichers aus anderen AC Quellen für Wechselrichterkaskaden. Verhindert Stand-by.
 render: |
   type: custom
   {{- if eq .usage "grid" }}
@@ -111,7 +93,6 @@ render: |
       type: holding
       decode: uint32nan
     scale: 0.01
-  maxacpower: {{ .maxacpower }}
   {{- end }}
   {{- if eq .usage "battery" }}
   power:
@@ -166,35 +147,22 @@ render: |
       switch:
       - case: 1 # normal
         set:
-          source: sequence
+          source: const
+          value: 0 # stop
           set:
-          - source: const
-            value: 0 # stop
-            set:
-              source: modbus
-              {{- include "modbus" . | indent 12 }}
-              register:
-                address: 47100 # Forcible charge/discharge
-                type: writesingle
-                encoding: uint16
-          {{- if eq .forceaccharging "false" }}
-          - source: const
-            value: 0 # Disable
-            set:
-              source: modbus
-              {{- include "modbus" . | indent 12 }}
-              register:
-                address: 47087 # Charge from grid
-                type: writesingle
-                encoding: uint16
-          {{- end }}
+            source: modbus
+            {{- include "modbus" . | indent 10 }}
+            register:
+              address: 47100 # Forcible charge/discharge
+              type: writesingle
+              encoding: uint16
       - case: 2 # hold
         set:
           source: sequence
           set:
           - source: const
             value: 2 # discharge
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -203,7 +171,7 @@ render: |
                 encoding: uint16
           - source: const
             value: 0 # duration
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -212,7 +180,7 @@ render: |
                 encoding: uint16
           - source: const
             value: 1 # Minute
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -221,7 +189,7 @@ render: |
                 encoding: uint16
           - source: const
             value: 0 # W
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -234,7 +202,7 @@ render: |
           set:
           - source: const
             value: 1 # charge
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -243,7 +211,7 @@ render: |
                 encoding: uint16
           - source: const
             value: 0 # duration
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -252,7 +220,7 @@ render: |
                 encoding: uint16
           - source: const
             value: 1 # Minute
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -260,8 +228,8 @@ render: |
                 type: writesingle
                 encoding: uint16
           - source: const
-            value: {{ .maxchargepower }} # W
-            set:
+            value: 10000 # W
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:
@@ -270,7 +238,7 @@ render: |
                 encoding: uint32
           - source: const
             value: 1 # Enable
-            set:
+            set: 
               source: modbus
               {{- include "modbus" . | indent 12 }}
               register:

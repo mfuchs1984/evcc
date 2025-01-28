@@ -11,9 +11,6 @@ const (
 	flagIgnoreDatabase            = "ignore-db"
 	flagIgnoreDatabaseDescription = "Run command ignoring service database"
 
-	flagDisableAuth            = "disable-auth"
-	flagDisableAuthDescription = "Disable authentication (dangerous)"
-
 	flagBatteryMode                = "battery-mode"
 	flagBatteryModeDescription     = "Set battery mode (normal, hold, charge)"
 	flagBatteryModeWait            = "battery-mode-wait"

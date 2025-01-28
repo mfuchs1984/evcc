@@ -65,7 +65,7 @@ func NewOpenWBFromConfig(other map[string]interface{}) (api.Meter, error) {
 		}
 
 		var curr [3]func() (float64, error)
-		for i := range 3 {
+		for i := 0; i < 3; i++ {
 			current, err := to.FloatGetter(mq("%s/evu/%s%d", cc.Topic, openwb.CurrentTopic, i+1))
 			if err != nil {
 				return nil, err

@@ -32,28 +32,38 @@ func NewConstFromConfig(ctx context.Context, other map[string]interface{}) (Prov
 		return nil, err
 	}
 
-	p := &constProvider{
+	pipe, err := pipeline.New(nil, cc.Settings)
+	if err != nil {
+		return nil, err
+	}
+
+	b, err := pipe.Process([]byte(cc.Value))
+	if err != nil {
+		return nil, err
+	}
+
+	o := &constProvider{
 		ctx: ctx,
-		str: cc.Value,
+		str: string(b),
 		set: cc.Set,
 	}
 
-	return p, nil
+	return o, nil
 }
 
 var _ StringProvider = (*constProvider)(nil)
 
-func (p *constProvider) StringGetter() (func() (string, error), error) {
+func (o *constProvider) StringGetter() (func() (string, error), error) {
 	return func() (string, error) {
-		return p.str, nil
+		return o.str, nil
 	}, nil
 }
 
 var _ IntProvider = (*constProvider)(nil)
 
-func (p *constProvider) IntGetter() (func() (int64, error), error) {
-	val, err := strconv.ParseInt(p.str, 10, 64)
-	if err != nil && p.str == "" {
+func (o *constProvider) IntGetter() (func() (int64, error), error) {
+	val, err := strconv.ParseInt(o.str, 10, 64)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -64,9 +74,9 @@ func (p *constProvider) IntGetter() (func() (int64, error), error) {
 
 var _ FloatProvider = (*constProvider)(nil)
 
-func (p *constProvider) FloatGetter() (func() (float64, error), error) {
-	val, err := strconv.ParseFloat(p.str, 64)
-	if err != nil && p.str == "" {
+func (o *constProvider) FloatGetter() (func() (float64, error), error) {
+	val, err := strconv.ParseFloat(o.str, 64)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -77,9 +87,9 @@ func (p *constProvider) FloatGetter() (func() (float64, error), error) {
 
 var _ BoolProvider = (*constProvider)(nil)
 
-func (p *constProvider) BoolGetter() (func() (bool, error), error) {
-	val, err := strconv.ParseBool(p.str)
-	if err != nil && p.str == "" {
+func (o *constProvider) BoolGetter() (func() (bool, error), error) {
+	val, err := strconv.ParseBool(o.str)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -90,14 +100,14 @@ func (p *constProvider) BoolGetter() (func() (bool, error), error) {
 
 var _ SetIntProvider = (*constProvider)(nil)
 
-func (p *constProvider) IntSetter(param string) (func(int64) error, error) {
-	set, err := NewIntSetterFromConfig(p.ctx, param, p.set)
+func (o *constProvider) IntSetter(param string) (func(int64) error, error) {
+	set, err := NewIntSetterFromConfig(o.ctx, param, o.set)
 	if err != nil {
 		return nil, err
 	}
 
-	val, err := strconv.ParseInt(p.str, 10, 64)
-	if err != nil && p.str == "" {
+	val, err := strconv.ParseInt(o.str, 10, 64)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -108,14 +118,14 @@ func (p *constProvider) IntSetter(param string) (func(int64) error, error) {
 
 var _ SetFloatProvider = (*constProvider)(nil)
 
-func (p *constProvider) FloatSetter(param string) (func(float64) error, error) {
-	set, err := NewFloatSetterFromConfig(p.ctx, param, p.set)
+func (o *constProvider) FloatSetter(param string) (func(float64) error, error) {
+	set, err := NewFloatSetterFromConfig(o.ctx, param, o.set)
 	if err != nil {
 		return nil, err
 	}
 
-	val, err := strconv.ParseFloat(p.str, 64)
-	if err != nil && p.str == "" {
+	val, err := strconv.ParseFloat(o.str, 64)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -126,14 +136,14 @@ func (p *constProvider) FloatSetter(param string) (func(float64) error, error) {
 
 var _ SetBoolProvider = (*constProvider)(nil)
 
-func (p *constProvider) BoolSetter(param string) (func(bool) error, error) {
-	set, err := NewBoolSetterFromConfig(p.ctx, param, p.set)
+func (o *constProvider) BoolSetter(param string) (func(bool) error, error) {
+	set, err := NewBoolSetterFromConfig(o.ctx, param, o.set)
 	if err != nil {
 		return nil, err
 	}
 
-	val, err := strconv.ParseBool(p.str)
-	if err != nil && p.str == "" {
+	val, err := strconv.ParseBool(o.str)
+	if err != nil && o.str == "" {
 		err = nil
 	}
 
@@ -144,13 +154,13 @@ func (p *constProvider) BoolSetter(param string) (func(bool) error, error) {
 
 var _ SetBytesProvider = (*constProvider)(nil)
 
-func (p *constProvider) BytesSetter(param string) (func([]byte) error, error) {
-	set, err := NewBytesSetterFromConfig(p.ctx, param, p.set)
+func (o *constProvider) BytesSetter(param string) (func([]byte) error, error) {
+	set, err := NewBytesSetterFromConfig(o.ctx, param, o.set)
 	if err != nil {
 		return nil, err
 	}
 
-	str := strings.ReplaceAll(strings.TrimPrefix(p.str, "0x"), "_", "")
+	str := strings.ReplaceAll(strings.TrimPrefix(o.str, "0x"), "_", "")
 
 	val, err := hex.DecodeString(str)
 	if err != nil {

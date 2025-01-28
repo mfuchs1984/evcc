@@ -28,10 +28,6 @@ never = "pouze když je dost přebytků"
 titleAdd = "Přidat měřič baterie"
 titleEdit = "Upravit měřič baterie"
 
-[config.circuits]
-
-[config.control]
-
 [config.deviceValue]
 capacity = "Kapacita"
 chargeStatus = "Stav"
@@ -42,9 +38,9 @@ current = "Proud"
 enabled = "Zapnuto"
 energy = "Energie"
 odometer = "Ujetých km"
-phaseCurrents = "Proud L1, L2, L3"
-phasePowers = "Výkon L1, L2, L3"
-phaseVoltages = "Napětí L1, L2, L3"
+phaseCurrents = "Proud L1..L3"
+phasePowers = "Výkon L1..L3"
+phaseVoltages = "Napětí L1..L3"
 power = "Výkon"
 range = "Rozsah"
 soc = "SoC"
@@ -66,10 +62,6 @@ save = "Uložit"
 titleAdd = "Přidat měřič spotřeby ze sítě"
 titleEdit = "Editovat měřič spotřeby ze sítě"
 
-[config.hems]
-
-[config.influx]
-
 [config.main]
 addLoadpoint = "Přidat nabíjecí bod"
 addPvBattery = "Přidat solar nebo baterii"
@@ -81,8 +73,6 @@ unconfigured = "není konfigurováno"
 vehicles = "Má vozidla"
 yaml = "Konfigurováno v evcc.yaml. Není editovatelné v UI."
 
-[config.messaging]
-
 [config.meter]
 cancel = "Zrušit"
 delete = "Smazat"
@@ -91,15 +81,7 @@ template = "Výrobce"
 titleChoice = "Co chcete přidat?"
 validateSave = "Zkontrolovat a uložit"
 
-[config.modbusproxy]
-
-[config.mqtt]
-
-[config.network]
-
 [config.options]
-
-[config.options.boolean]
 
 [config.options.endianness]
 
@@ -115,11 +97,7 @@ titleEdit = "Editovat měřič solární energie"
 cancel = "Zrušit"
 save = "Uložit"
 
-[config.sponsor]
-
 [config.system]
-
-[config.tariffs]
 
 [config.title]
 
@@ -309,8 +287,6 @@ smartCostClean = "Nabíjení čistou energií ze sítě"
 title = "Nastavení {0}"
 vehicle = "Vozidlo"
 
-[main.loadpointSettings.batteryBoost]
-
 [main.loadpointSettings.limitSoc]
 description = "Nabíjecí strop, který je použit, když je vozidlo připojeno."
 label = "Výchozí strop"
@@ -466,8 +442,6 @@ title = "Nabíjecí relace"
 total = "Celkem"
 vehicle = "Vozidlo"
 
-[sessions.chartTitle]
-
 [sessions.csv]
 chargedenergy = "Energie (kWh)"
 created = "Vytvořeno"
@@ -483,14 +457,6 @@ vehicle = "Vozidlo"
 allLoadpoints = "všechny nabíjecí body"
 allVehicles = "všechny vozidla"
 filter = "Filtr"
-
-[sessions.group]
-
-[sessions.groupBy]
-
-[sessions.period]
-
-[sessions.type]
 
 [settings]
 title = "Základní nastavení"

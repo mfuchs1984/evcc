@@ -2,7 +2,9 @@ package provider
 
 import (
 	"context"
+	"math"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -18,11 +20,11 @@ const retryDelay = 5 * time.Second
 
 // Socket implements websocket request provider
 type Socket struct {
-	*getter
 	*request.Helper
 	log      *util.Logger
 	url      string
 	headers  map[string]string
+	scale    float64
 	pipeline *pipeline.Pipeline
 	val      *util.Monitor[[]byte]
 }
@@ -63,10 +65,9 @@ func NewSocketProviderFromConfig(other map[string]interface{}) (Provider, error)
 		Helper:  request.NewHelper(log),
 		url:     url,
 		headers: cc.Headers,
+		scale:   cc.Scale,
 		val:     util.NewMonitor[[]byte](cc.Timeout),
 	}
-
-	p.getter = defaultGetters(p, cc.Scale)
 
 	// handle basic auth
 	if cc.Auth.Type != "" {
@@ -145,7 +146,7 @@ func (p *Socket) run(errC chan error) {
 	}
 }
 
-var _ Getters = (*Socket)(nil)
+var _ StringProvider = (*Socket)(nil)
 
 // StringGetter sends string request
 func (p *Socket) StringGetter() (func() (string, error), error) {
@@ -161,4 +162,46 @@ func (p *Socket) StringGetter() (func() (string, error), error) {
 
 		return string(val), nil
 	}, nil
+}
+
+var _ FloatProvider = (*Socket)(nil)
+
+// FloatGetter parses float from string getter
+func (p *Socket) FloatGetter() (func() (float64, error), error) {
+	g, err := p.StringGetter()
+
+	return func() (float64, error) {
+		s, err := g()
+		if err != nil {
+			return 0, err
+		}
+
+		f, err := strconv.ParseFloat(s, 64)
+
+		return f * p.scale, err
+	}, err
+}
+
+var _ IntProvider = (*Socket)(nil)
+
+// IntGetter parses int64 from float getter
+func (p *Socket) IntGetter() (func() (int64, error), error) {
+	g, err := p.FloatGetter()
+
+	return func() (int64, error) {
+		f, err := g()
+		return int64(math.Round(f)), err
+	}, err
+}
+
+var _ BoolProvider = (*Socket)(nil)
+
+// BoolGetter parses bool from string getter
+func (p *Socket) BoolGetter() (func() (bool, error), error) {
+	g, err := p.StringGetter()
+
+	return func() (bool, error) {
+		s, err := g()
+		return util.Truish(s), err
+	}, err
 }

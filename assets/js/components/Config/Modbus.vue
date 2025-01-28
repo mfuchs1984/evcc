@@ -36,7 +36,7 @@
 		<PropertyField
 			id="modbusId"
 			property="id"
-			type="Int"
+			type="Number"
 			class="me-2"
 			required
 			:model-value="id || defaultId || 1"
@@ -59,7 +59,7 @@
 			<PropertyField
 				id="modbusPort"
 				property="port"
-				type="Int"
+				type="Number"
 				class="me-2 w-50"
 				required
 				:model-value="port || defaultPort || 502"
@@ -116,9 +116,9 @@
 			<PropertyField
 				id="modbusBaudrate"
 				property="baudrate"
-				type="Choice"
+				type="Number"
 				class="me-2 w-50"
-				:choice="baudrateOptions"
+				:valid-values="baudrateOptions"
 				required
 				:model-value="baudrate || defaultBaudrate"
 				@change="$emit('update:baudrate', $event.target.value)"
@@ -128,9 +128,9 @@
 			<PropertyField
 				id="modbusComset"
 				property="comset"
-				type="Choice"
+				type="String"
 				class="me-2 w-50"
-				:choice="comsetOptions"
+				:valid-values="comsetOptions"
 				required
 				:model-value="comset || defaultComset || '8N1'"
 				@change="$emit('update:comset', $event.target.value)"

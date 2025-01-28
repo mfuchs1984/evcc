@@ -13,14 +13,13 @@ params:
     description:
       de: Ladezustand
       en: Charge status
-    type: choice
-    choice: [A, B, C, D, E, F]
+    validvalues: [A, B, C, D, E, F]
     default: A
   - name: power
     description:
       de: Leistung
       en: Power
-    type: int
+    type: number
     default: 0
   - name: enabled
     description:
@@ -34,7 +33,7 @@ params:
       en: Maximum amperage (A)
     help:
     example: 16
-    type: int
+    type: number
     advanced: true
 
 render: |

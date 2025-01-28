@@ -2,7 +2,6 @@ package provider
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/evcc-io/evcc/api"
 	"github.com/evcc-io/evcc/util"
@@ -30,12 +29,12 @@ func NewCombinedFromConfig(ctx context.Context, other map[string]interface{}) (P
 
 	plugged, err := NewBoolGetterFromConfig(ctx, cc.Plugged)
 	if err != nil {
-		return nil, fmt.Errorf("plugged: %w", err)
+		return nil, err
 	}
 
 	charging, err := NewBoolGetterFromConfig(ctx, cc.Charging)
 	if err != nil {
-		return nil, fmt.Errorf("charging: %w", err)
+		return nil, err
 	}
 
 	o := NewCombinedProvider(plugged, charging)

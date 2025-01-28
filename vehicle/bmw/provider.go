@@ -108,14 +108,6 @@ func (v *Provider) GetLimitSoc() (int64, error) {
 	return res.State.ElectricChargingState.ChargingTarget, nil
 }
 
-var _ api.VehicleClimater = (*Provider)(nil)
-
-// Climater implements the api.VehicleClimater interface
-func (v *Provider) Climater() (bool, error) {
-	res, err := v.statusG()
-	return res.State.ClimateControlState.Activity == "HEATING" || res.State.ClimateControlState.Activity == "COOLING", err
-}
-
 var _ api.Resurrector = (*Provider)(nil)
 
 func (v *Provider) WakeUp() error {

@@ -280,18 +280,6 @@ func (wb *Em2Go) Voltages() (float64, float64, float64, error) {
 	return wb.getPhaseValues(em2GoRegVoltages)
 }
 
-var _ api.ChargeRater = (*Em2Go)(nil)
-
-// ChargedEnergy implements the api.ChargeRater interface
-func (wb *Em2Go) ChargedEnergy() (float64, error) {
-	b, err := wb.conn.ReadHoldingRegisters(em2GoRegChargedEnergy, 2)
-	if err != nil {
-		return 0, err
-	}
-
-	return float64(binary.BigEndian.Uint16(b)) / 10, nil
-}
-
 var _ api.ChargeTimer = (*Em2Go)(nil)
 
 // ChargeDuration implements the api.ChargeTimer interface

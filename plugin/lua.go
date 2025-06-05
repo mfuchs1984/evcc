@@ -2,43 +2,30 @@ package plugin
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"reflect"
+	"strconv"
 
-	"github.com/cenkalti/backoff/v4"
-	"github.com/evcc-io/evcc/plugin/golang"
+	lua "github.com/Shopify/go-lua"
 	"github.com/evcc-io/evcc/util"
 	"github.com/traefik/yaegi/interp"
 )
 
-// Go implements Go request provider
-type Go struct {
-	vm     func() (*interp.Interpreter, error)
+// LuaPlugin implements scripting using Lua for evcc plugin interface
+type LuaPlugin struct {
 	script string
 	in     []inputTransformation
 	out    []outputTransformation
 }
 
-func init() {
-	registry.AddCtx("go", NewGoPluginFromConfig)
-}
-
-// NewGoPluginFromConfig creates a Go provider
-func NewGoPluginFromConfig(ctx context.Context, other map[string]interface{}) (Plugin, error) {
+// NewLuaPluginWithSetter allows specifying a setter script and output variable
+func NewLuaPluginFromConfig(ctx context.Context, other map[string]interface{}) (Plugin, error) {
 	var cc struct {
-		VM     string
 		Script string
 		In     []transformationConfig
 		Out    []transformationConfig
 	}
 
 	if err := util.DecodeOther(other, &cc); err != nil {
-		return nil, err
-	}
-
-	_, err := golang.RegisteredVM(cc.VM, "")
-	if err != nil {
 		return nil, err
 	}
 
@@ -52,9 +39,7 @@ func NewGoPluginFromConfig(ctx context.Context, other map[string]interface{}) (P
 		return nil, err
 	}
 
-	p := &Go{
-		// recreate VM on each invocation
-		vm:     func() (*interp.Interpreter, error) { return golang.RegisteredVM(cc.VM, "") },
+	p := &LuaPlugin{
 		script: cc.Script,
 		in:     in,
 		out:    out,
@@ -63,88 +48,88 @@ func NewGoPluginFromConfig(ctx context.Context, other map[string]interface{}) (P
 	return p, nil
 }
 
-var _ FloatGetter = (*Go)(nil)
-
-// FloatGetter parses float from request
-func (p *Go) FloatGetter() (func() (float64, error), error) {
-	return func() (float64, error) {
-		v, err := p.handleGetter()
-		if err != nil {
-			return 0, err
-		}
-
-		vv, ok := v.(float64)
-		if !ok {
-			return 0, fmt.Errorf("not a float: %v", v)
-		}
-
-		return vv, nil
-	}, nil
+func (p *LuaPlugin) Inputs() []string {
+	return p.in
 }
 
-var _ IntGetter = (*Go)(nil)
-
-// IntGetter parses int64 from request
-func (p *Go) IntGetter() (func() (int64, error), error) {
-	return func() (int64, error) {
-		v, err := p.handleGetter()
-		if err != nil {
-			return 0, err
-		}
-
-		vv, ok := v.(int64)
-		if !ok {
-			return 0, fmt.Errorf("not a int: %v", v)
-		}
-
-		return vv, nil
-	}, nil
+// registerBit32 registers bit32.band for scripts using it
+func registerBit32(l *lua.State) {
+	l.NewTable()
+	l.PushGoFunction(func(l *lua.State) int {
+		a := int(lua.CheckInteger(l, 1))
+		b := int(lua.CheckInteger(l, 2))
+		l.PushInteger(a & b)
+		return 1
+	})
+	l.SetField(-2, "band")
+	l.SetGlobal("bit32")
 }
 
-var _ StringGetter = (*Go)(nil)
-
-// StringGetter parses string from request
-func (p *Go) StringGetter() (func() (string, error), error) {
-	return func() (string, error) {
-		v, err := p.handleGetter()
-		if err != nil {
-			return "", err
-		}
-
-		vv, ok := v.(string)
+// setInputs sets plugin inputs as Lua globals
+func (p *LuaPlugin) setInputs(l *lua.State, params map[string]interface{}) error {
+	for _, name := range p.inputs {
+		val, ok := params[name]
 		if !ok {
-			return "", fmt.Errorf("not a string: %v", v)
+			return fmt.Errorf("missing input: %s", name)
 		}
-
-		return vv, nil
-	}, nil
+		switch v := val.(type) {
+		case int:
+			l.PushInteger(v)
+		case int64:
+			l.PushInteger(int(v))
+		case float64:
+			l.PushNumber(float64(v))
+		case float32:
+			l.PushNumber(float64(v))
+		case bool:
+			l.PushBoolean(v)
+		case string:
+			l.PushString(v)
+		default:
+			return fmt.Errorf("unsupported type for input %s: %T", name, v)
+		}
+		l.SetGlobal(name)
+	}
+	return nil
 }
 
-var _ BoolGetter = (*Go)(nil)
-
-// BoolGetter parses bool from request
-func (p *Go) BoolGetter() (func() (bool, error), error) {
-	return func() (bool, error) {
-		v, err := p.handleGetter()
-		if err != nil {
-			return false, err
-		}
-
-		vv, ok := v.(bool)
-		if !ok {
-			return false, fmt.Errorf("not a bool: %v", v)
-		}
-
-		return vv, nil
-	}, nil
-}
-
-func (p *Go) handleGetter() (any, error) {
-	vm, err := p.vm()
-	if err != nil {
+// Eval evaluates the Lua script and returns the result as interface{}
+func (p *LuaPlugin) Eval(params map[string]interface{}) (interface{}, error) {
+	l := lua.NewState()
+	lua.OpenLibraries(l)
+	registerBit32(l)
+	if err := p.setInputs(l, params); err != nil {
 		return nil, err
 	}
+	if err := lua.DoString(l, p.script); err != nil {
+		return nil, fmt.Errorf("lua error: %w", err)
+	}
+	if l.Top() == 0 {
+		return nil, fmt.Errorf("lua script did not return a value")
+	}
+	ret := l.ToValue(-1)
+	l.Pop(1)
+	switch v := ret.(type) {
+	case float64:
+		return v, nil
+	case int64:
+		return v, nil
+	case float32:
+		return float64(v), nil
+	case bool:
+		return v, nil
+	case string:
+		return v, nil
+	default:
+		return nil, fmt.Errorf("unsupported return type: %T", ret)
+	}
+}
 
+func (p *Go) setParam(vm *interp.Interpreter) func(param string, val any) error {
+
+}
+
+func (p *LuaPlugin) handleGetter() (any, error) {
 	if err := transformInputs(p.in, p.setParam(vm)); err != nil {
 		return nil, err
 	}
@@ -152,93 +137,182 @@ func (p *Go) handleGetter() (any, error) {
 	return p.evaluate(vm)
 }
 
-func (p *Go) handleSetter(param string, val any) error {
-	vm, err := p.vm()
-	if err != nil {
-		return err
-	}
+// === Getter interfaces ===
+var _ FloatGetter = (*Go)(nil)
 
-	setParam := p.setParam(vm)
+func (p *LuaPlugin) FloatGetter() (func() (float64, error), error) {
 
-	if err := transformInputs(p.in, setParam); err != nil {
-		return err
-	}
-
-	if err := setParam(param, val); err != nil {
-		return err
-	}
-
-	vv, err := p.evaluate(vm)
-	if err != nil {
-		return err
-	}
-
-	return transformOutputs(p.out, vv)
-}
-
-func (p *Go) evaluate(vm *interp.Interpreter) (res any, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			err = fmt.Errorf("panic: %v", r)
+	return func() (float64, error) {
+		v, err := p.Eval(nil)
+		if err != nil {
+			return 0, err
 		}
-		err = backoff.Permanent(err)
-	}()
-
-	v, err := vm.Eval(p.script)
-	if err != nil {
-		return nil, err
-	}
-
-	if !v.IsValid() {
-		return nil, errors.New("missing result")
-	}
-
-	if (v.Kind() == reflect.Pointer || v.Kind() == reflect.Interface) && v.IsNil() {
-		return nil, nil
-	}
-
-	return normalizeValue(v.Interface())
+		vv, ok := v.(float64)
+		if !ok {
+			return 0, fmt.Errorf("not a float: %v", v)
+		}
+		return vv, nil
+	}, nil
+	// val, err := p.Eval(params)
+	// if err != nil {
+	// 	return 0, err
+	// }
+	// switch v := val.(type) {
+	// case float64:
+	// 	return v, nil
+	// case int:
+	// 	return float64(v), nil
+	// case int64:
+	// 	return float64(v), nil
+	// case float32:
+	// 	return float64(v), nil
+	// case string:
+	// 	return strconv.ParseFloat(v, 64)
+	// case bool:
+	// 	if v {
+	// 		return 1, nil
+	// 	}
+	// 	return 0, nil
+	// default:
+	// 	return 0, fmt.Errorf("cannot convert return value (%T) to float64", v)
+	// }
 }
 
-func (p *Go) setParam(vm *interp.Interpreter) func(param string, val any) error {
-	return func(param string, val any) error {
-		_, err := vm.Eval(fmt.Sprintf("%s := %#v;", param, val))
-		return err
+var _ IntGetter = (*Go)(nil)
+
+func (p *LuaPlugin) IntGetter(params map[string]interface{}) (int64, error) {
+	val, err := p.Eval(params)
+	if err != nil {
+		return 0, err
 	}
+	switch v := val.(type) {
+	case int64:
+		return v, nil
+	case int:
+		return int64(v), nil
+	case float64:
+		return int64(v), nil
+	case float32:
+		return int64(v), nil
+	case string:
+		return strconv.ParseInt(v, 10, 64)
+	case bool:
+		if v {
+			return 1, nil
+		}
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("cannot convert return value (%T) to int64", v)
+	}
+}
+
+var _ BoolGetter = (*Go)(nil)
+
+func (p *LuaPlugin) BoolGetter(params map[string]interface{}) (bool, error) {
+	val, err := p.Eval(params)
+	if err != nil {
+		return false, err
+	}
+	switch v := val.(type) {
+	case bool:
+		return v, nil
+	case int:
+		return v != 0, nil
+	case int64:
+		return v != 0, nil
+	case float64:
+		return v != 0, nil
+	case string:
+		return v != "" && v != "0" && v != "false", nil
+	default:
+		return false, fmt.Errorf("cannot convert return value (%T) to bool", v)
+	}
+}
+
+var _ StringGetter = (*Go)(nil)
+
+func (p *LuaPlugin) StringGetter(params map[string]interface{}) (string, error) {
+	val, err := p.Eval(params)
+	if err != nil {
+		return "", err
+	}
+	switch v := val.(type) {
+	case string:
+		return v, nil
+	case int:
+		return strconv.Itoa(v), nil
+	case int64:
+		return strconv.FormatInt(v, 10), nil
+	case float64:
+		return strconv.FormatFloat(v, 'f', -1, 64), nil
+	case bool:
+		if v {
+			return "true", nil
+		}
+		return "false", nil
+	default:
+		return "", fmt.Errorf("cannot convert return value (%T) to string", v)
+	}
+}
+
+// === Setter interfaces ===
+
+var _ FloatSetter = (*Go)(nil)
+
+func (p *LuaPlugin) FloatSetter(params map[string]interface{}, v float64) error {
+	return p.setterEval(params, v)
 }
 
 var _ IntSetter = (*Go)(nil)
 
-// IntSetter sends int request
-func (p *Go) IntSetter(param string) (func(int64) error, error) {
-	return func(val int64) error {
-		return p.handleSetter(param, val)
-	}, nil
-}
-
-var _ FloatSetter = (*Go)(nil)
-
-// FloatSetter sends float request
-func (p *Go) FloatSetter(param string) (func(float64) error, error) {
-	return func(val float64) error {
-		return p.handleSetter(param, val)
-	}, nil
-}
-
-var _ StringSetter = (*Go)(nil)
-
-// StringSetter sends string request
-func (p *Go) StringSetter(param string) (func(string) error, error) {
-	return func(val string) error {
-		return p.handleSetter(param, val)
-	}, nil
+func (p *LuaPlugin) IntSetter(params map[string]interface{}, v int64) error {
+	return p.setterEval(params, v)
 }
 
 var _ BoolSetter = (*Go)(nil)
 
-// BoolSetter sends bool request
-func (p *Go) BoolSetter(param string) (func(bool) error, error) {
-	return func(val bool) error {
-		return p.handleSetter(param, val)
-	}, nil
+func (p *LuaPlugin) BoolSetter(params map[string]interface{}, v bool) error {
+	return p.setterEval(params, v)
+}
+
+var _ StringSetter = (*Go)(nil)
+
+func (p *LuaPlugin) StringSetter(params map[string]interface{}, v string) error {
+	return p.setterEval(params, v)
+}
+
+// setterEval runs the setterScript with params and value as "value"
+func (p *LuaPlugin) setterEval(params map[string]interface{}, value interface{}) error {
+	if p.setterScript == "" {
+		return fmt.Errorf("no setter script defined")
+	}
+	l := lua.NewState()
+	lua.OpenLibraries(l)
+	registerBit32(l)
+	// Set all params as globals
+	if err := p.setInputs(l, params); err != nil {
+		return err
+	}
+	// Set "value" for the new value
+	switch v := value.(type) {
+	case int:
+		l.PushInteger(v)
+	case int64:
+		l.PushInteger(int(v))
+	case float64:
+		l.PushNumber(v)
+	case float32:
+		l.PushNumber(float64(v))
+	case bool:
+		l.PushBoolean(v)
+	case string:
+		l.PushString(v)
+	default:
+		return fmt.Errorf("unsupported value type for setter: %T", v)
+	}
+	l.SetGlobal("value")
+	if err := lua.DoString(l, p.setterScript); err != nil {
+		return fmt.Errorf("lua setter error: %w", err)
+	}
+	return nil
 }

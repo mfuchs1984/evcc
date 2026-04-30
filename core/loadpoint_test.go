@@ -863,3 +863,79 @@ func TestWelcomeChargeAppliedOnlyOnce(t *testing.T) {
 	welcomeCharge, _ = lp.updateChargerStatus()
 	assert.False(t, welcomeCharge)
 }
+
+func TestBatteryBoostLowPower(t *testing.T) {
+	clock := clock.NewMock()
+	clock.Add(time.Hour) // Ensure we are well ahead of Unix 0
+
+	ctrl := gomock.NewController(t)
+	charger := api.NewMockCharger(ctrl)
+
+	lp := &Loadpoint{
+		log:         util.NewLogger("foo"),
+		bus:         evbus.New(),
+		clock:       clock,
+		charger:     charger,
+		chargeMeter: &Null{},
+		chargeRater: &Null{},
+		chargeTimer: &Null{},
+		wakeUpTimer: NewTimer(),
+		minCurrent:  6,
+		maxCurrent:  16,
+		phases:      1,
+		status:      api.StatusNone,
+		mode:        api.ModePV,
+	}
+
+	Voltage = 230
+	uiChan, pushChan, lpChan := createChannels(t)
+
+	// Prepare
+	charger.EXPECT().Enabled().Return(false, nil)
+	lp.Prepare(&Site{ResidualPower: 0}, uiChan, pushChan, lpChan)
+
+	// Enable battery boost
+	err := lp.SetBatteryBoost(true)
+	assert.NoError(t, err)
+	assert.Equal(t, boostStart, lp.GetBatteryBoost())
+
+	// Update 1: Start boost
+	charger.EXPECT().Status().Return(api.StatusB, nil)
+	charger.EXPECT().Enabled().Return(false, nil)
+	charger.EXPECT().MaxCurrent(int64(6)).Return(nil)
+	charger.EXPECT().Enable(true).Return(nil)
+
+	lp.Update(-500, 500, nil, nil, false, false, 0, nil, nil)
+
+	assert.Equal(t, true, lp.enabled)
+	assert.Equal(t, boostStart, lp.GetBatteryBoost())
+	assert.Equal(t, 6.0, lp.offeredCurrent)
+
+	// Update 2: Now enabled. Transition to StatusC triggers transition to boostContinue
+	// in boostPower() AFTER calculating targetCurrent.
+	// sitePower = 3180. boostStart is still active.
+	// boostPower() sets boostContinue and returns res = 500 + 3680 = 4180.
+	// sitePower in pvMaxCurrent = 3180 - 4180 = -1000.
+	// deltaCurrent = 1000 / 230 = 4.34.
+	// targetCurrent = 6 + 4.34 = 10.34.
+	lp.setStatus(api.StatusC)
+	charger.EXPECT().Status().Return(api.StatusC, nil)
+	charger.EXPECT().Enabled().Return(true, nil)
+	charger.EXPECT().MaxCurrent(int64(10)).Return(nil)
+
+	lp.Update(3180, 500, nil, nil, false, false, 0, nil, nil)
+
+	assert.Equal(t, boostContinue, lp.GetBatteryBoost())
+	assert.Equal(t, true, lp.enabled)
+	assert.Equal(t, 10.0, lp.offeredCurrent)
+
+	// Update 3: Now in boostContinue, targetCurrent drops, disable immediately
+	// because boostStart already expired the timer.
+	charger.EXPECT().Status().Return(api.StatusC, nil)
+	charger.EXPECT().Enabled().Return(true, nil)
+	charger.EXPECT().Enable(false).Return(nil)
+
+	lp.Update(3180, 500, nil, nil, false, false, 0, nil, nil)
+
+	assert.Equal(t, false, lp.enabled)
+}

@@ -45,7 +45,7 @@ func (ts *tokenSource) Token() (*oauth2.Token, error) {
 		// Network/transport failures don't surface as graphql.Errors and stay
 		// transient via the wrapped path below.
 		if _, ok := errors.AsType[graphql.Errors](err); ok {
-			return nil, fmt.Errorf("%w: %w", ErrAuthFailed, err)
+			return nil, fmt.Errorf("%w: %v", ErrAuthFailed, err)
 		}
 		return nil, fmt.Errorf("authentication failed: %w", err)
 	}

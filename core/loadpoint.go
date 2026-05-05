@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ type Loadpoint struct {
 	lpChan   chan<- *Loadpoint      // update requests
 	log      *util.Logger
 
-	rwMutex      int64        // count reentrant RWMutex
+	rwMutex      atomic.Int64 // count reentrant RWMutex
 	sync.RWMutex              // guard status
 	vmu          sync.RWMutex // guard vehicle
 

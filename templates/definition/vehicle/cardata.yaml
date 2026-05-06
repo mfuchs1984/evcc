@@ -22,6 +22,7 @@ requirements:
       vehicle.drivetrain.electricEngine.charging.timeRemaining
       vehicle.drivetrain.electricEngine.kombiRemainingElectricRange
       vehicle.powertrain.electric.battery.stateOfCharge.target
+      vehicle.powertrain.electric.battery.stateOfCharge.displayed (für "Neue Klasse" Fahrzeuge)
       vehicle.vehicle.preConditioning.activity
       vehicle.vehicle.travelledDistance
       ```
@@ -42,6 +43,7 @@ requirements:
       vehicle.drivetrain.electricEngine.charging.timeRemaining
       vehicle.drivetrain.electricEngine.kombiRemainingElectricRange
       vehicle.powertrain.electric.battery.stateOfCharge.target
+      vehicle.powertrain.electric.battery.stateOfCharge.displayed (for "New Class" cars)
       vehicle.vehicle.preConditioning.activity
       vehicle.vehicle.travelledDistance
       ```

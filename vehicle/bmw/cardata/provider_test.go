@@ -47,3 +47,44 @@ func TestCardataStreaming(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, 47.0, soc)
 }
+
+func TestSocFallback(t *testing.T) {
+	ctx := t.Context()
+
+	p := NewProvider(ctx, util.NewLogger("foo"), nil, oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: "at",
+	}), "client", "vin", 0)
+
+	// prevent container panic
+	p.updated = time.Now()
+
+	keySocOld := "vehicle.drivetrain.batteryManagement.header"
+	keySocNew := "vehicle.powertrain.electric.battery.stateOfCharge.displayed"
+
+	// Case 1: Old key is missing, new key is present
+	p.rest = map[string]TelematicData{
+		keySocNew: {Value: "80"},
+	}
+	soc, err := p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 80.0, soc)
+
+	// Case 2: Old key is empty (null in JSON), new key is present
+	p.rest = map[string]TelematicData{
+		keySocOld: {Value: ""},
+		keySocNew: {Value: "90"},
+	}
+	soc, err = p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 90.0, soc)
+
+	// Case 3: Old key is nil in streaming, new key is present
+	p.rest = nil
+	p.streaming = map[string]StreamingData{
+		keySocOld: {Value: nil},
+		keySocNew: {Value: 95.0},
+	}
+	soc, err = p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 95.0, soc)
+}

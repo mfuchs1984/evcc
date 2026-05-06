@@ -25,6 +25,7 @@ var requiredKeys = []string{
 	"vehicle.drivetrain.electricEngine.charging.status",
 	"vehicle.drivetrain.electricEngine.charging.timeRemaining",
 	"vehicle.drivetrain.electricEngine.kombiRemainingElectricRange",
+	"vehicle.powertrain.electric.battery.stateOfCharge.displayed",
 	"vehicle.powertrain.electric.battery.stateOfCharge.target",
 	"vehicle.vehicle.preConditioning.activity",
 	"vehicle.vehicle.travelledDistance",

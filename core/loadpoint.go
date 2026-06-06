@@ -1465,13 +1465,13 @@ func (lp *Loadpoint) boostPower(batteryBoostPower float64) float64 {
 	// push demand to drain battery (at least 100W)
 	delta := math.Max(100, math.Abs(lp.site.GetResidualPower()))
 
-	if lp.coarseCurrent() {
-		// add effective step power to delta to make sure to step up to the next full amp
-		// just using lp.EffectiveStepPower() as delta is not enough because this will result
-		// in a too low current when there is a bit remaining grid consumption due to the accuracy
-		// of the battery controller
-		delta += lp.EffectiveStepPower()
-	}
+	//if lp.coarseCurrent() {
+	// add effective step power to delta to make sure to step up to the next full amp
+	// just using lp.EffectiveStepPower() as delta is not enough because this will result
+	// in a too low current when there is a bit remaining grid consumption due to the accuracy
+	// of the battery controller
+	//	delta += lp.EffectiveStepPower()
+	//}
 
 	// start boosting by setting maximum power
 	if boost == boostStart {

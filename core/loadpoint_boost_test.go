@@ -91,3 +91,87 @@ func TestBoostPower(t *testing.T) {
 	// res = max(0, -2000) + 790 + 0 = 790W
 	assert.Equal(t, 790.0, delta)
 }
+
+func TestPvMaxCurrentForcedBatteryCharge(t *testing.T) {
+	Voltage = 230
+	lp := &Loadpoint{
+		log:          util.NewLogger("lp"),
+		status:       api.StatusC,
+		batteryBoost: boostContinue,
+		maxCurrent:   16,
+		minCurrent:   6,
+		phases:       3,
+		enabled:      true,
+		chargePower:  4000.0,
+	}
+	s := &mockSite{
+		maxDischargePower: 5000,
+		residualPower:     0,
+	}
+	lp.site = s
+
+	// Scenario: Battery is forced charging at 3000W, car is drawing 4000W.
+	// Since the battery refuses to yield its forced charge, the grid supplies 7000W total.
+	// sitePower = gridPower (7000) + batteryPower (-3000) = 4000
+	sitePower := 4000.0
+	batteryBoostPower := -3000.0
+
+	// In pvMaxCurrent:
+	// boostPower(-3000) will authorize 3000W.
+	// sitePower becomes 4000 - 3000 = 1000W.
+	// deltaCurrent = powerToCurrent(-1000) = -1.44A.
+	// targetCurrent drops by 1.44A. Since we didn't even set offeredCurrent,
+	// the base is 0, making targetCurrent 0. Either way, it's < minCurrent (6A).
+	// pvMaxCurrent will return minCurrent to throttle down the over-budget charging.
+	current := lp.pvMaxCurrent(api.ModePV, sitePower, batteryBoostPower, false, false)
+
+	assert.Equal(t, 6.0, current)
+}
+
+func TestPvMaxCurrentSpeedUpStep(t *testing.T) {
+	Voltage = 230
+	lp := &Loadpoint{
+		log:          util.NewLogger("lp"),
+		status:       api.StatusC,
+		batteryBoost: boostContinue,
+		maxCurrent:   32, // Allow high current for the test
+		minCurrent:   6,
+		phases:       3,
+		enabled:      true,
+	}
+	s := &mockSite{
+		maxDischargePower: 5000,
+		residualPower:     0,
+	}
+	lp.site = s
+
+	// Cycle 1: Car is at 0W. PV is 3000W. Battery is charging at -3000W.
+	// sitePower = grid + battery = 0 + (-3000) = -3000W
+	lp.chargePower = 0.0
+	lp.offeredCurrent = 0.0
+	sitePower1 := -3000.0
+	batteryBoostPower1 := -3000.0
+
+	targetCurrent1 := lp.pvMaxCurrent(api.ModePV, sitePower1, batteryBoostPower1, false, false)
+	
+	// Because batteryBoostPower is -3000, delta = 3000.
+	// Target current will be PV + 3000 = 6000W (8.69A).
+	assert.InDelta(t, 8.69, targetCurrent1, 0.1)
+
+	// Cycle 2: Car followed the target and is now drawing 6000W!
+	// Since PV is 3000W and Car is 6000W, the battery MUST supply the remaining 3000W.
+	// So the battery flips into discharging at 3000W.
+	// sitePower = grid (0) + battery (3000) = 3000W
+	lp.chargePower = 6000.0
+	lp.offeredCurrent = targetCurrent1
+	sitePower2 := 3000.0
+	batteryBoostPower2 := 3000.0 // positive now, battery is discharging
+
+	targetCurrent2 := lp.pvMaxCurrent(api.ModePV, sitePower2, batteryBoostPower2, false, false)
+
+	// In Cycle 2, because battery is discharging, delta reverts to the safe 790W.
+	// targetCurrent will be 6000W + 790W = 6790W (9.84A).
+	// This proves that targetCurrent increases and the hand-off is seamless!
+	assert.Greater(t, targetCurrent2, targetCurrent1, "Target current gracefully increases when car follows the target")
+	assert.InDelta(t, 9.84, targetCurrent2, 0.1)
+}

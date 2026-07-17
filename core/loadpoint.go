@@ -1537,6 +1537,10 @@ func (lp *Loadpoint) boostPower(batteryBoostPower float64) float64 {
 		delta += lp.EffectiveStepPower()
 	}
 
+	if batteryBoostPower < 0 {
+		delta = math.Max(delta, -batteryBoostPower)
+	}
+
 	// start boosting by setting maximum power
 	if boost == boostStart {
 		delta = lp.EffectiveMaxPower()

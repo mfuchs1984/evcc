@@ -46,7 +46,63 @@ func TestCardataStreaming(t *testing.T) {
 
 	soc, err = p.Soc()
 	require.NoError(t, err)
-	require.Equal(t, 47.0, soc)
+	require.Equal(t, 42.0, soc)
+}
+
+func TestTimestampComparison(t *testing.T) {
+	keySoc := "vehicle.drivetrain.batteryManagement.header"
+	p := &Provider{
+		ts: oauth2.StaticTokenSource(&oauth2.Token{
+			AccessToken: "at",
+		}),
+		updated:   time.Now(),
+		rest:      make(map[string]TelematicData),
+		streaming: make(map[string]StreamingData),
+	}
+
+	// Case 1: REST data is newer
+	p.rest[keySoc] = TelematicData{
+		Value:     "10",
+		Timestamp: time.Now().Add(1 * time.Hour),
+	}
+	p.streaming[keySoc] = StreamingData{
+		Value:     20,
+		TimeStamp: time.Now().Add(-1 * time.Hour),
+	}
+
+	val, err := p.any(keySoc)
+	require.NoError(t, err)
+	require.Equal(t, "10", val)
+
+	// Case 2: Streaming data is newer
+	p.rest[keySoc] = TelematicData{
+		Value:     "10",
+		Timestamp: time.Now().Add(-1 * time.Hour),
+	}
+	p.streaming[keySoc] = StreamingData{
+		Value:     20,
+		TimeStamp: time.Now().Add(1 * time.Hour),
+	}
+
+	val, err = p.any(keySoc)
+	require.NoError(t, err)
+	require.Equal(t, 20, val)
+
+	// Case 3: Only Streaming exists
+	delete(p.rest, keySoc)
+	val, err = p.any(keySoc)
+	require.NoError(t, err)
+	require.Equal(t, 20, val)
+
+	// Case 4: Only REST exists
+	delete(p.streaming, keySoc)
+	p.rest[keySoc] = TelematicData{
+		Value:     "10",
+		Timestamp: time.Now().Add(-1 * time.Hour),
+	}
+	val, err = p.any(keySoc)
+	require.NoError(t, err)
+	require.Equal(t, "10", val)
 }
 
 func TestSocFallback(t *testing.T) {

@@ -104,7 +104,6 @@ func (v *Provider) updateContainerData() error {
 	}
 
 	v.rest = res.TelematicData
-	v.streaming = make(map[string]StreamingData) // reset streaming
 
 	return nil
 }
@@ -130,12 +129,30 @@ func (v *Provider) any(key string) (any, error) {
 		v.updated = time.Now()
 	}
 
-	if a, ok := v.streaming[key]; ok {
-		return a.Value, nil
+	var sVal, rVal any
+	var sTime time.Time
+	if el, ok := v.streaming[key]; ok {
+		sVal = el.Value
+		sTime = el.TimeStamp
+	}
+	var rTime time.Time
+	if el, ok := v.rest[key]; ok {
+		rVal = el.Value
+		rTime = el.Timestamp
 	}
 
-	if el, ok := v.rest[key]; ok {
-		return el.Value, nil
+	if sVal != nil && rVal != nil {
+		if sTime.After(rTime) {
+			return sVal, nil
+		}
+		return rVal, nil
+	}
+
+	if sVal != nil {
+		return sVal, nil
+	}
+	if rVal != nil {
+		return rVal, nil
 	}
 
 	return nil, api.ErrNotAvailable

@@ -30,23 +30,81 @@ func TestCardataStreaming(t *testing.T) {
 	require.Equal(t, 42.0, soc)
 
 	mqtt := mqttConnections["client"]
-	dataC := mqtt.subscriptions["vin"]
+	dataC := mqtt.subscriptions["VIN"] // test uppercase logic
 	require.NotNil(t, dataC, "streaming channel")
 
-	dataC <- StreamingMessage{
-		Vin: "vin",
+	dataC[0] <- StreamingMessage{
+		Vin: "VIN", // messages from MQTT have uppercase VIN
 		Data: map[string]StreamingData{
-			keySoc: {Value: "47"},
+			keySoc: {Value: "47", TimeStamp: time.Now()},
 		},
 	}
 
 	// process first message
-	dataC <- StreamingMessage{}
-	dataC <- StreamingMessage{}
+	dataC[0] <- StreamingMessage{}
+	dataC[0] <- StreamingMessage{}
 
 	soc, err = p.Soc()
 	require.NoError(t, err)
 	require.Equal(t, 47.0, soc)
+}
+
+func TestTimestampComparison(t *testing.T) {
+	ctx := t.Context()
+	p := NewProvider(ctx, util.NewLogger("foo"), nil, oauth2.StaticTokenSource(&oauth2.Token{
+		AccessToken: "at",
+	}), "client", "vin", 0)
+
+	// prevent container panic
+	p.updated = time.Now()
+
+	key := "vehicle.drivetrain.batteryManagement.header"
+	oldTime := time.Date(2026, 7, 26, 10, 0, 0, 0, time.UTC)
+	newTime := time.Date(2026, 7, 26, 12, 0, 0, 0, time.UTC)
+
+	// Case 1: REST data is newer
+	p.rest = map[string]TelematicData{
+		key: {Value: "10", Timestamp: newTime},
+	}
+	p.streaming = map[string]StreamingData{
+		key: {Value: 20.0, TimeStamp: oldTime},
+	}
+	soc, err := p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 10.0, soc)
+
+	// Case 2: Streaming data is newer
+	p.rest = map[string]TelematicData{
+		key: {Value: "10", Timestamp: oldTime},
+	}
+	p.streaming = map[string]StreamingData{
+		key: {Value: 20.0, TimeStamp: newTime},
+	}
+	soc, err = p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 20.0, soc)
+
+	// Case 3: Streaming timestamp is zero (null), REST has a timestamp
+	p.rest = map[string]TelematicData{
+		key: {Value: "30", Timestamp: oldTime},
+	}
+	p.streaming = map[string]StreamingData{
+		key: {Value: 40.0, TimeStamp: time.Time{}}, // Zero value
+	}
+	soc, err = p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 30.0, soc)
+
+	// Case 4: Streaming value is nil (null), REST has value
+	p.rest = map[string]TelematicData{
+		key: {Value: "50", Timestamp: oldTime},
+	}
+	p.streaming = map[string]StreamingData{
+		key: {Value: nil, TimeStamp: newTime},
+	}
+	soc, err = p.Soc()
+	require.NoError(t, err)
+	require.Equal(t, 50.0, soc)
 }
 
 func TestSocFallback(t *testing.T) {

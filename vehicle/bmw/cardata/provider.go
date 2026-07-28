@@ -39,18 +39,18 @@ func NewProvider(ctx context.Context, log *util.Logger, api *API, ts oauth2.Toke
 		log:       log,
 		api:       api,
 		ts:        ts,
-		vin:       vin,
+		vin:       strings.ToUpper(vin),
 		cache:     cache,
 		rest:      make(map[string]TelematicData),
 		streaming: make(map[string]StreamingData),
 	}
 
 	mqtt := NewMqttConnector(context.Background(), log, clientID, ts)
-	recvC := mqtt.Subscribe(vin)
+	recvC := mqtt.Subscribe(v.vin)
 
 	go func() {
 		<-ctx.Done()
-		mqtt.Unsubscribe(vin)
+		mqtt.Unsubscribe(v.vin, recvC)
 	}()
 
 	go func() {
@@ -104,7 +104,6 @@ func (v *Provider) updateContainerData() error {
 	}
 
 	v.rest = res.TelematicData
-	v.streaming = make(map[string]StreamingData) // reset streaming
 
 	return nil
 }
@@ -130,12 +129,31 @@ func (v *Provider) any(key string) (any, error) {
 		v.updated = time.Now()
 	}
 
+	var sVal any
+	var sTime time.Time
 	if a, ok := v.streaming[key]; ok {
-		return a.Value, nil
+		sVal = a.Value
+		sTime = a.TimeStamp
 	}
 
+	var rVal any
+	var rTime time.Time
 	if el, ok := v.rest[key]; ok {
-		return el.Value, nil
+		rVal = el.Value
+		rTime = el.Timestamp
+	}
+
+	if sVal != nil && rVal != nil {
+		if sTime.After(rTime) {
+			return sVal, nil
+		}
+		return rVal, nil
+	}
+	if sVal != nil {
+		return sVal, nil
+	}
+	if rVal != nil {
+		return rVal, nil
 	}
 
 	return nil, api.ErrNotAvailable

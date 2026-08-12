@@ -1573,7 +1573,7 @@ func (lp *Loadpoint) publishTimer(name string, delay time.Duration, action strin
 }
 
 // boostPower returns the additional power that the loadpoint should draw from the battery
-func (lp *Loadpoint) boostPower(batteryPower float64) float64 {
+func (lp *Loadpoint) boostPower(batteryDischargePower float64) float64 {
 	boost := lp.GetBatteryBoost()
 	if boost == boostDisabled || boost == boostHold {
 		return 0
@@ -1607,23 +1607,23 @@ func (lp *Loadpoint) boostPower(batteryPower float64) float64 {
 
 	if maxDischargePower := lp.site.GetBatteryMaxDischargePower(); maxDischargePower != nil {
 		// limit delta to what the battery can still provide
-		delta = min(delta, max(0, *maxDischargePower-batteryPower))
+		delta = min(delta, max(0, *maxDischargePower-batteryDischargePower))
 	}
 
-	res := max(0, batteryPower) + delta + lp.site.GetResidualPower()
-	lp.log.DEBUG.Printf("pv charge battery boost: %.0fW = -%.0fW battery - %.0fW boost - %.0fW residual", -res, max(0, batteryPower), delta, lp.site.GetResidualPower())
+	res := batteryDischargePower + delta + lp.site.GetResidualPower()
+	lp.log.DEBUG.Printf("pv charge battery boost: %.0fW = -%.0fW battery - %.0fW boost - %.0fW residual", -res, batteryDischargePower, delta, lp.site.GetResidualPower())
 
 	return res
 }
 
 // pvMaxCurrent calculates the maximum target current for PV mode
-func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower, batteryPower float64, batteryBuffered, batteryStart bool) float64 {
+func (lp *Loadpoint) pvMaxCurrent(mode api.ChargeMode, sitePower, batteryDischargePower float64, batteryBuffered, batteryStart bool) float64 {
 	// read only once to simplify testing
 	minCurrent := lp.effectiveMinCurrent()
 	maxCurrent := lp.effectiveMaxCurrent()
 
 	// push demand to drain battery
-	sitePower -= lp.boostPower(batteryPower)
+	sitePower -= lp.boostPower(batteryDischargePower)
 
 	// switch phases up/down
 	var scaledTo int
@@ -2105,7 +2105,7 @@ func (lp *Loadpoint) phaseSwitchCompleted() bool {
 }
 
 // Update is the main control function. It reevaluates meters and charger state
-func (lp *Loadpoint) Update(sitePower, batteryPower float64, consumption, feedin api.Rates, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64, dim *bool) {
+func (lp *Loadpoint) Update(sitePower, batteryDischargePower float64, consumption, feedin api.Rates, batteryBuffered, batteryStart bool, greenShare float64, effPrice, effCo2 *float64, dim *bool) {
 	// hold battery boost when SOC drops below the limit: stop draining the battery, but
 	// keep the vehicle prioritised over recharging it (via sitePower priorityAdjustment)
 	// until the vehicle disconnects. This holds the battery at the configured level
@@ -2295,7 +2295,7 @@ func (lp *Loadpoint) Update(sitePower, batteryPower float64, consumption, feedin
 			break
 		}
 
-		targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryPower, batteryBuffered, batteryStart)
+		targetCurrent := lp.pvMaxCurrent(mode, sitePower, batteryDischargePower, batteryBuffered, batteryStart)
 
 		if targetCurrent == 0 && lp.vehicleClimateActive() {
 			targetCurrent = lp.effectiveMinCurrent()

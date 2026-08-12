@@ -84,23 +84,64 @@ func TestBoostPower(t *testing.T) {
 	res = lp.boostPower(6000)
 	assert.Equal(t, 6000.0, res)
 
-	// boostStart while battery is charging (negative power)
+	// boostStart while battery is charging (negative power filtered via max(0, power))
 	// battery charging at 2000W, limit is 5000W
-	// max discharge capacity = 5000 - (-2000) = 7000W
-	// res = max(0, -2000) + 7000 + 0 = 7000W
+	// max discharge capacity = 5000W
+	// res = 0 + 5000 + 0 = 5000W
 	lp.batteryBoost = boostStart
-	res = lp.boostPower(-2000)
-	assert.Equal(t, 7000.0, res)
+	res = lp.boostPower(max(0, -2000.0))
+	assert.Equal(t, 5000.0, res)
 
-	// boostContinue while battery is charging (negative power)
+	// boostContinue while battery is charging (negative power filtered via max(0, power))
 	// limit is 50W (less than the standard 790W delta)
-	// without raw negative power, delta would be restricted to 50W
-	// with raw negative power (-2000W), headroom is 2050W, so delta is allowed to be 790W
+	// headroom is 50W, so delta is capped at 50W
 	limit50 := 50.0
 	s.maxDischargePower = &limit50
 	s.residualPower = 0 // base delta = 100 + 690 = 790
 	lp.batteryBoost = boostContinue
-	res = lp.boostPower(-2000)
-	// res = max(0, -2000) + 790 + 0 = 790W
-	assert.Equal(t, 790.0, res)
+	res = lp.boostPower(max(0, -2000.0))
+	// res = 0 + 50 + 0 = 50W
+	assert.Equal(t, 50.0, res)
 }
+
+func TestSiteBatteryBoostNoDoubleCounting(t *testing.T) {
+	Voltage = 230
+
+	limit5000 := 5000.0
+	site := &Site{
+		log:       util.NewLogger("site"),
+		gridPower: 0,
+		battery: types.BatteryState{
+			Power: -2000, // Battery charging at 2000W
+			Soc:   80,
+		},
+		batteryMaxDischargePower: &limit5000,
+	}
+
+	lp := &Loadpoint{
+		log:          util.NewLogger("lp"),
+		site:         site,
+		status:       api.StatusC,
+		batteryBoost: boostStart,
+		maxCurrent:   16,
+		minCurrent:   6,
+		phases:       3,
+		enabled:      true,
+	}
+
+	// Calculate sitePower via real Site
+	sitePower, _, _, priorityAdjustment, err := site.sitePower(0, 0)
+	assert.NoError(t, err)
+
+	if lp.GetBatteryBoost() != boostDisabled {
+		sitePower += priorityAdjustment
+	}
+
+	// Pass max(0, site.battery.Power) as site.go does
+	targetCurrent := lp.pvMaxCurrent(api.ModePV, sitePower, max(0, site.battery.Power), false, false)
+	targetPower := Voltage * 3 * targetCurrent
+
+	// Available capacity: 2000W (redirected charge) + 5000W (max discharge) = 7000W
+	assert.InDelta(t, 7000.0, targetPower, 10.0, "target EV power must be 7000W without double counting")
+}
+

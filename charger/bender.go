@@ -29,6 +29,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/evcc-io/evcc/api"
@@ -44,6 +45,8 @@ type sempHandler struct {
 	conn     *semp.Connection
 	deviceG  util.Cacheable[semp.Device2EM]
 	phases   int
+	repeat1p int
+	mu       sync.Mutex
 }
 
 // BenderCC charger implementation
@@ -185,7 +188,7 @@ func NewBenderCC(ctx context.Context, settings modbus.TcpSettings, cache time.Du
 			// set initial SEMP power limit to max so modbus control from 6 to 16 A is possible
 			if err := wb.semp.conn.SendDeviceControl(wb.semp.deviceID, 0xffff); err == nil {
 				implement.Has(wb, implement.PhaseSwitcher(wb.phases1p3pSEMP))
-				implement.Has(wb, implement.PhaseGetter(wb.getPhases))
+				implement.Has(wb, implement.PhaseGetter(wb.getPhasesSEMP))
 				// start heartbeat to keep connection alive
 				go wb.heartbeat(ctx)
 			} else {
@@ -202,7 +205,7 @@ func NewBenderCC(ctx context.Context, settings modbus.TcpSettings, cache time.Du
 	return wb, nil
 }
 
-// heartbeat ensures that SEMP device control updates are sent about once per minute
+// heartbeat ensures that SEMP device control updates are sent about every 30 seconds
 func (wb *BenderCC) heartbeat(ctx context.Context) {
 	for tick := time.Tick(5 * time.Second); ; {
 		select {
@@ -210,10 +213,22 @@ func (wb *BenderCC) heartbeat(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		}
-		if time.Since(wb.semp.conn.Updated()) >= time.Minute {
+		if time.Since(wb.semp.conn.Updated()) >= 30*time.Second {
+			power := 0xffff
+
+			wb.semp.mu.Lock()
+			if phases, err := wb.getPhases(); err == nil && phases == 1 {
+				wb.semp.repeat1p = 0
+			}
+			if wb.semp.repeat1p > 0 {
+				wb.log.DEBUG.Println("heartbeat: repeating 1p power limit")
+				power = 1518
+				wb.semp.repeat1p--
+			}
+			wb.semp.mu.Unlock()
 			// Send a very high power value to allow full control between 6 and 16A via modbus
 			// Note: This will not trigger a phase switch, as the value is above the max. power consumption
-			if err := wb.semp.conn.SendDeviceControl(wb.semp.deviceID, 0xffff); err != nil {
+			if err := wb.semp.conn.SendDeviceControl(wb.semp.deviceID, power); err != nil {
 				wb.log.ERROR.Printf("heartbeat: failed to send update: %v", err)
 			}
 		}
@@ -479,12 +494,19 @@ func (wb *BenderCC) phases1p3pSEMP(phases int) error {
 
 	wb.semp.phases = phases
 
+	wb.semp.mu.Lock()
+	if phases == 1 {
+		wb.semp.repeat1p = 2
+	} else {
+		wb.semp.repeat1p = 0
+	}
+	wb.semp.mu.Unlock()
+
 	wb.semp.deviceG.Reset()
 
 	return nil
 }
 
-// getPhases implements the api.PhaseGetter interface for semp phase switching by reading the relay state through modbus
 func (wb *BenderCC) getPhases() (int, error) {
 	// check relay register
 	b, err := wb.conn.ReadHoldingRegisters(bendRegRelayState, 1)
@@ -498,6 +520,20 @@ func (wb *BenderCC) getPhases() (int, error) {
 
 	if binary.BigEndian.Uint16(b) == 1 {
 		return 3, nil
+	}
+
+	return 0, api.ErrNotAvailable
+}
+
+// getPhases implements the api.PhaseGetter interface for semp phase switching by reading the relay state through modbus
+func (wb *BenderCC) getPhasesSEMP() (int, error) {
+	phases, err := wb.getPhases()
+	if err != nil && err != api.ErrNotAvailable {
+		return 0, err
+	}
+
+	if phases > 0 {
+		return phases, nil
 	}
 
 	return wb.semp.phases, nil

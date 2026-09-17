@@ -1,0 +1,16 @@
+template: ocpp-kathrein
+products:
+  - brand: Kathrein
+    description:
+      generic: KWB-AC40
+  - brand: Kathrein
+    description:
+      generic: KWB-AC40 E
+capabilities: ["mA", "rfid", "1p3p", "meter", "dim"]
+evcc: ["sponsorship", "skiptest"]
+params:
+  - preset: ocpp
+  - name: metervalues
+    default: -Current.Offered
+render: |
+  {{ include "ocpp" . }}
